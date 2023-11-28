@@ -22,11 +22,13 @@ def open_document(file_path):
 
 def generate_text(generator, prompt, max_length):
     try:
-        prompt_length = len(prompt.split())
-        max_length = max(max_length, prompt_length + 1)
-        if len(prompt) > max_length:
-            print("Prompt is longer than max_length, truncating...")
-            prompt = prompt[:max_length]
+        # Truncate the prompt to the model's maximum sequence length minus 1
+        prompt_tokens = generator.tokenizer.tokenize(prompt)
+        if len(prompt_tokens) > generator.model.config.max_position_embeddings - 1:
+            prompt_tokens = prompt_tokens[:generator.model.config.max_position_embeddings - 1]
+        prompt = generator.tokenizer.convert_tokens_to_string(prompt_tokens)
+
+        # Generate text
         return generator(prompt, max_length=max_length)[0]['generated_text']
     except Exception as e:
         print(f"Error generating text: {e}")
@@ -43,21 +45,26 @@ def main():
     if generator is None:
         return
 
-    doc = open_document('new.docx') #input docs
+    doc = open_document('output.docx')
     if doc is None:
         return
 
-    title = doc.paragraphs[0].text if doc.paragraphs else ""
+    title = ''
+    for para in doc.paragraphs:
+        if para.text:  # assuming the title is the first non-empty paragraph
+            if title == '':
+                title = para.text
+            else:
+                prompt = title
+                generated = generate_text(generator, prompt, 500)
+                if generated is None:
+                    return
 
-    generated = generate_text(generator, title, 500)
-    if generated is None:
-        return
+                content = generated[len(prompt):]
+                para.add_run(content)
+                title = ''
 
-    content = generated[len(title):]
-
-    doc.add_paragraph(content)
-
-    save_document(doc, "updated_doc.docx") #output doc
+    save_document(doc, "updated_doc.docx")
 
 if __name__ == "__main__":
     main()
