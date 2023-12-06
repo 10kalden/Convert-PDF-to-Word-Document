@@ -1,63 +1,54 @@
-import os
 from docx import Document
-from transformers import pipeline
+from docx.shared import Pt
+from transformers import GPT2Tokenizer, GPT2LMHeadModel
 
-def load_model(model_name):
-    try:
-        return pipeline('text-generation', model=model_name)
-    except Exception as e:
-        print(f"Error loading model: {e}")
-        return None
+# for loading the model and tokenizer 
+tokenizer = GPT2Tokenizer.from_pretrained('gpt2', pad_token='[PAD]', padding_side='left')
+model = GPT2LMHeadModel.from_pretrained('gpt2')
 
-def open_document(file_path):
-    if not os.path.exists(file_path):
-        print(f"File does not exist: {file_path}")
-        return None
+def extend_content(doc_path: str, tokenizer, model, min_lines: int = 10, max_title_length: int = 50, max_lines_per_page: int = 50) -> Document:
+    doc = Document(doc_path)
+    processed_paragraphs = set() 
 
-    try:
-        return Document(file_path)
-    except Exception as e:
-        print(f"Error opening document: {e}")
-        return None
+    for paragraph in doc.paragraphs:
+        if paragraph.text.strip() and paragraph.text not in processed_paragraphs:  
+            lines = paragraph.text.split('\n')
 
-def generate_text(generator, prompt, max_length):
-    try:
-        prompt_length = len(prompt.split())
-        max_length = max(max_length, prompt_length + 1)
-        if len(prompt) > max_length:
-            print("Prompt is longer than max_length, truncating...")
-            prompt = prompt[:max_length]
-        return generator(prompt, max_length=max_length)[0]['generated_text']
-    except Exception as e:
-        print(f"Error generating text: {e}")
-        return None
+            if len(lines) < min_lines or len(paragraph.text) < 50 or "specific_keyword" not in paragraph.text:
+                try:
+                    input_ids = tokenizer.encode(paragraph.text, return_tensors='pt')
+                    attention_mask = input_ids.ne(tokenizer.pad_token_id).float()
 
-def save_document(doc, file_path):
-    try:
-        doc.save(file_path)
-    except Exception as e:
-        print(f"Error saving document: {e}")
+                    output = model.generate(
+                        input_ids,
+                        attention_mask=attention_mask,
+                        max_length=80,
+                        temperature=2.0,  # increase for more output
+                        top_k=50,
+                        top_p=0.9
+                    )
 
-def main():
-    generator = load_model('gpt2')
-    if generator is None:
-        return
+                    extra_content = tokenizer.decode(output[0], skip_special_tokens=True)
+                    extra_lines = extra_content.split('\n')
 
-    doc = open_document('new.docx') #input docs
-    if doc is None:
-        return
+                    #for estimation if the page is filled
+                    if len(lines) + len(extra_lines) > max_lines_per_page:
+                        extra_content = '\n'.join(extra_lines[:max_lines_per_page - len(lines)])
 
-    title = doc.paragraphs[0].text if doc.paragraphs else ""
+                    run = paragraph.add_run(extra_content)
+                    run.font.size = Pt(12)
 
-    generated = generate_text(generator, title, 500)
-    if generated is None:
-        return
+                    processed_paragraphs.add(paragraph.text)  # adding paragraph 
 
-    content = generated[len(title):]
+                except RuntimeError as e:
+                    print(f"A RuntimeError occurred: {e}")
+                except ValueError as e:
+                    print(f"A ValueError occurred: {e}")
+                except Exception as e:
+                    print(f"An unexpected error occurred: {e}")
 
-    doc.add_paragraph(content)
+    return doc
 
-    save_document(doc, "updated_doc.docx") #output doc
-
-if __name__ == "__main__":
-    main()
+doc_path = "output.docx" #input document
+extended_doc = extend_content(doc_path, tokenizer, model)
+extended_doc.save("extended_document.docx") #output document

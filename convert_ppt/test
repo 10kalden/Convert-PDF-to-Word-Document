@@ -1,0 +1,42 @@
+from docx import Document
+from docx.shared import Pt
+from transformers import GPT2Tokenizer, GPT2LMHeadModel
+
+def extend_content(doc_path: str, min_lines: int = 10, model_name: str = 'gpt2', max_title_length: int = 50) -> Document:
+    tokenizer = GPT2Tokenizer.from_pretrained(model_name, pad_token='[PAD]', padding_side='left')
+    model = GPT2LMHeadModel.from_pretrained(model_name)
+
+    doc = Document(doc_path)
+    processed_pages = set() 
+
+    for paragraph in doc.paragraphs:
+        if paragraph.text.strip():  
+            lines = paragraph.text.split('\n')
+
+            if len(lines) < min_lines or len(paragraph.text) < 50 or "specific_keyword" not in paragraph.text:
+                try:
+                    input_ids = tokenizer.encode(paragraph.text, return_tensors='pt')
+                    attention_mask = input_ids.ne(tokenizer.pad_token_id).float()
+
+                    output = model.generate(
+                        input_ids,
+                        attention_mask=attention_mask,
+                        max_length=100,
+                        temperature=0.7,
+                        top_k=50,
+                        top_p=0.9
+                    )
+
+                    extra_content = tokenizer.decode(output[0], skip_special_tokens=True)
+
+                    run = paragraph.add_run('\n' + extra_content)
+                    run.font.size = Pt(12)
+
+                except Exception as e:
+                    print(f"An error occurred while generating text: {e}")
+
+    return doc
+
+doc_path = "output.docx"
+extended_doc = extend_content(doc_path)
+extended_doc.save("extended_document.docx")
