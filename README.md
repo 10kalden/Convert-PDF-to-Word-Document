@@ -1,4 +1,4 @@
-This Python script is designed to interface with Microsoft applications using the win32com.client library, leveraging its COM interface. The script accomplishes two primary tasks:
+This tool is designed to interface with Microsoft applications using the win32com.client library, leveraging its COM interface. This tool accomplishes two primary tasks:
 
 Slide Extraction as Images: It reads a PowerPoint (PPTX) file and saves each slide as an image (PNG format). This is achieved by utilizing the win32com.client to control Microsoft PowerPoint and exporting each slide as a separate image file.
 
